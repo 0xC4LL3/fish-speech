@@ -113,12 +113,23 @@ class Transformer(nn.Module):
         else:
             self.register_buffer("freqs_cis", None)
 
-        causal_mask = torch.tril(torch.ones(32768, 32768, dtype=torch.bool))
-        self.register_buffer("causal_mask", causal_mask, persistent=False)
+        # Grown on demand by _causal_mask. A full 32768x32768 mask is 1.07GB, and the
+        # codec builds three of these, which dominated its memory even though a request
+        # only ever indexes as many positions as it actually has.
+        self.register_buffer(
+            "causal_mask", torch.ones(0, 0, dtype=torch.bool), persistent=False
+        )
 
         self.max_batch_size = -1
         self.max_seq_length = -1
         self.use_kv_cache = False
+
+    def _causal_mask(self, n: int) -> Tensor:
+        if self.causal_mask.size(0) < n:
+            self.causal_mask = torch.tril(
+                torch.ones(n, n, dtype=torch.bool, device=self.norm.weight.device)
+            )
+        return self.causal_mask
 
     def setup_caches(self, max_batch_size, max_seq_length):
         """
@@ -158,11 +169,12 @@ class Transformer(nn.Module):
             freqs_cis = None
 
         if mask is None:  # in case of non-causal model
+            causal_mask = self._causal_mask(int(input_pos.max()) + 1)
             if not self.training and self.use_kv_cache:
-                mask = self.causal_mask[None, None, input_pos]
+                mask = causal_mask[None, None, input_pos]
                 mask = mask[..., : input_pos.max() + 1]
             else:
-                mask = self.causal_mask[None, None, input_pos]
+                mask = causal_mask[None, None, input_pos]
                 mask = mask[..., input_pos]
 
         for i, layer in enumerate(self.layers):
