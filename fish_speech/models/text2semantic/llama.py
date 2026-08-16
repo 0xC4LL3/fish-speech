@@ -910,8 +910,11 @@ class Attention(nn.Module):
         if self.kv_cache is not None:
             k, v = self.kv_cache.update(input_pos, k, v)
 
-        k = k.repeat_interleave(self.n_head // self.n_local_heads, dim=1)
-        v = v.repeat_interleave(self.n_head // self.n_local_heads, dim=1)
+        # kv_cache.update returns the whole cache, so repeat_interleave would copy a
+        # [B, n_head, max_seq_len, head_dim] tensor on every decode step. enable_gqa
+        # makes SDPA broadcast the KV heads internally instead, which is the same
+        # arithmetic without the copy.
+        enable_gqa = self.n_head != self.n_local_heads
 
         if self.use_sdpa:
             if mask is None:
@@ -922,6 +925,7 @@ class Attention(nn.Module):
                         v,
                         dropout_p=self.dropout if self.training else 0.0,
                         is_causal=True,
+                        enable_gqa=enable_gqa,
                         # No third party attn_mask here to use flash_attention
                     )
             else:
@@ -931,8 +935,11 @@ class Attention(nn.Module):
                     v,
                     attn_mask=mask,
                     dropout_p=self.dropout if self.training else 0.0,
+                    enable_gqa=enable_gqa,
                 )
         else:
+            k = k.repeat_interleave(self.n_head // self.n_local_heads, dim=1)
+            v = v.repeat_interleave(self.n_head // self.n_local_heads, dim=1)
             y = self.eq_scaled_dot_product_attention(
                 q,
                 k,
