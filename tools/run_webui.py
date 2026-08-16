@@ -49,6 +49,13 @@ def parse_args():
         help="Precision of the DAC codec weights; bfloat16 saves ~0.9GB of VRAM.",
     )
     parser.add_argument("--compile", action="store_true")
+    parser.add_argument(
+        "--listen",
+        type=str,
+        default="127.0.0.1:7860",
+        help="host:port to bind the web UI to. Defaults to localhost only. Pass a "
+        "specific interface address to expose it to just that network.",
+    )
     parser.add_argument("--max-gradio-length", type=int, default=0)
     parser.add_argument("--theme", type=str, default="light")
 
@@ -120,4 +127,5 @@ if __name__ == "__main__":
     inference_fct = get_inference_wrapper(inference_engine)
 
     app = build_app(inference_fct, args.theme)
-    app.launch()
+    host, _, port = args.listen.rpartition(":")
+    app.launch(server_name=host, server_port=int(port))
