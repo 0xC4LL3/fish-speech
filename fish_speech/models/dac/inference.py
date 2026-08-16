@@ -20,14 +20,16 @@ from fish_speech.utils.file import AUDIO_EXTENSIONS
 OmegaConf.register_new_resolver("eval", eval)
 
 
-def load_model(config_name, checkpoint_path, device="cuda"):
+def load_model(config_name, checkpoint_path, device="cuda", dtype=None):
     hydra.core.global_hydra.GlobalHydra.instance().clear()
     with initialize(version_base="1.3", config_path="../../configs"):
         cfg = compose(config_name=config_name)
 
     model = instantiate(cfg)
+    # Load on CPU so the fp32 weights never sit on the GPU next to their converted
+    # copy; that transient peak is larger than just keeping the codec in fp32.
     state_dict = torch.load(
-        checkpoint_path, map_location=device, mmap=True, weights_only=True
+        checkpoint_path, map_location="cpu", mmap=True, weights_only=True
     )
     if "state_dict" in state_dict:
         state_dict = state_dict["state_dict"]
@@ -41,7 +43,8 @@ def load_model(config_name, checkpoint_path, device="cuda"):
 
     result = model.load_state_dict(state_dict, strict=False, assign=True)
     model.eval()
-    model.to(device)
+    # The checkpoint is fp32 (~1.9GB of VRAM); dtype=bfloat16 halves that.
+    model.to(device=device, dtype=dtype)
 
     logger.info(f"Loaded model: {result}")
     return model

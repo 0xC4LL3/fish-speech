@@ -30,8 +30,10 @@ class VQManager:
                 sample_rate = self.decoder_model.sample_rate
             reference_audio_content = self.load_audio(reference_audio, sample_rate)
 
+            # Match the codec's dtype, which is not always fp32 (--codec-precision).
             audios = torch.from_numpy(reference_audio_content).to(
-                self.decoder_model.device
+                device=self.decoder_model.device,
+                dtype=next(self.decoder_model.parameters()).dtype,
             )[None, None, :]
             audio_lengths = torch.tensor(
                 [audios.shape[2]], device=self.decoder_model.device, dtype=torch.long
