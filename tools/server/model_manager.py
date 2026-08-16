@@ -18,12 +18,16 @@ class ModelManager:
         llama_checkpoint_path: str,
         decoder_checkpoint_path: str,
         decoder_config_name: str,
+        max_length: int | None = None,
+        codec_precision: str = "float32",
     ) -> None:
 
         self.mode = mode
         self.device = device
         self.half = half
         self.compile = compile
+        self.max_length = max_length
+        self.codec_precision = getattr(torch, codec_precision)
 
         self.precision = torch.half if half else torch.bfloat16
 
@@ -63,6 +67,7 @@ class ModelManager:
                 device=device,
                 precision=precision,
                 compile=compile,
+                max_length=self.max_length,
             )
         else:
             raise ValueError(f"Invalid mode: {mode}")
@@ -74,6 +79,7 @@ class ModelManager:
             config_name=config_name,
             checkpoint_path=checkpoint_path,
             device=device,
+            dtype=self.codec_precision,
         )
         logger.info("Decoder model loaded.")
 

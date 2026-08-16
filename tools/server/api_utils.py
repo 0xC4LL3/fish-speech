@@ -34,6 +34,20 @@ def parse_args():
     parser.add_argument("--decoder-config-name", type=str, default="modded_dac_vq")
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--half", action="store_true")
+    parser.add_argument(
+        "--max-length",
+        type=int,
+        default=None,
+        help="Override the model's max sequence length (default 32768). Lowering it "
+        "shrinks the KV cache and causal mask, e.g. 8192 fits a 16GB GPU.",
+    )
+    parser.add_argument(
+        "--codec-precision",
+        type=str,
+        choices=["float32", "bfloat16", "float16"],
+        default="float32",
+        help="Precision of the DAC codec weights; bfloat16 saves ~0.9GB of VRAM.",
+    )
     parser.add_argument("--compile", action="store_true")
     parser.add_argument("--max-text-length", type=int, default=0)
     parser.add_argument("--listen", type=str, default="127.0.0.1:8080")

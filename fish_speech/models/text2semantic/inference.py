@@ -359,11 +359,25 @@ def generate(
     return seq
 
 
-def init_model(checkpoint_path, device, precision, compile=False):
-    model = DualARTransformer.from_pretrained(checkpoint_path, load_weights=True)
+def init_model(checkpoint_path, device, precision, compile=False, max_length=None):
+    model = DualARTransformer.from_pretrained(
+        checkpoint_path, load_weights=True, max_length=max_length
+    )
 
     model = model.to(device=device, dtype=precision)
     logger.info(f"Restored model from checkpoint")
+
+    # The causal mask is max_seq_len^2 bools and the KV cache is linear in
+    # max_seq_len, so both are worth reporting on memory constrained GPUs.
+    cfg = model.config
+    mask_bytes = cfg.max_seq_len**2
+    kv_bytes = (
+        2 * cfg.n_layer * cfg.n_local_heads * cfg.max_seq_len * cfg.head_dim
+    ) * precision.itemsize
+    logger.info(
+        f"max_seq_len={cfg.max_seq_len}: causal mask {mask_bytes / 1e9:.02f} GB, "
+        f"KV cache {kv_bytes / 1e9:.02f} GB"
+    )
 
     if isinstance(model, DualARTransformer):
         decode_one_token = decode_one_token_ar
@@ -750,13 +764,14 @@ def launch_thread_safe_queue(
     device,
     precision,
     compile: bool = False,
+    max_length: int | None = None,
 ):
     input_queue = queue.Queue()
     init_event = threading.Event()
 
     def worker():
         model, decode_one_token = init_model(
-            checkpoint_path, device, precision, compile=compile
+            checkpoint_path, device, precision, compile=compile, max_length=max_length
         )
         with torch.device(device):
             model.setup_caches(
@@ -833,6 +848,13 @@ def launch_thread_safe_queue(
 @click.option("--compile/--no-compile", default=False)
 @click.option("--seed", type=int, default=42)
 @click.option("--half/--no-half", default=False)
+@click.option(
+    "--max-length",
+    type=int,
+    default=None,
+    help="Override the model's max sequence length. Lowering it shrinks the KV "
+    "cache (linearly) and the causal mask (quadratically), e.g. 8192 fits a 16GB GPU.",
+)
 @click.option("--iterative-prompt/--no-iterative-prompt", default=True)
 @click.option("--chunk-length", type=int, default=300)
 @click.option("--output-dir", type=Path, default="output")
@@ -852,6 +874,7 @@ def main(
     compile: bool,
     seed: int,
     half: bool,
+    max_length: Optional[int],
     iterative_prompt: bool,
     chunk_length: int,
     output_dir: Path,
@@ -875,7 +898,7 @@ def main(
     logger.info("Loading model ...")
     t0 = time.time()
     model, decode_one_token = init_model(
-        checkpoint_path, device, precision, compile=compile
+        checkpoint_path, device, precision, compile=compile, max_length=max_length
     )
     with torch.device(device):
         model.setup_caches(
