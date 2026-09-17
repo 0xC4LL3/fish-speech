@@ -74,7 +74,8 @@ def load_model(config_name, checkpoint_path, device="cuda", dtype=None):
 def main(input_path, output_path, config_name, checkpoint_path, device):
     model = load_model(config_name, checkpoint_path, device=device)
 
-    if input_path.suffix in AUDIO_EXTENSIONS:
+    suffix = input_path.suffix.lower()
+    if suffix in AUDIO_EXTENSIONS:
         logger.info(f"Processing in-place reconstruction of {input_path}")
 
         # Load audio
@@ -99,7 +100,7 @@ def main(input_path, output_path, config_name, checkpoint_path, device):
 
         # Save indices
         np.save(output_path.with_suffix(".npy"), indices.cpu().numpy())
-    elif input_path.suffix == ".npy":
+    elif suffix == ".npy":
         logger.info(f"Processing precomputed indices from {input_path}")
         indices = np.load(input_path)
         indices = torch.from_numpy(indices).to(device).long()
